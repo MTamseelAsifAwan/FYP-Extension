@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+ 
+.li-items{
+  @apply hover:text-purple-900 hover:underline hover:text-lg hover:font-bold  ;
+}
+.shadow-boxy {
+  --tw-shadow: 0 15px 60px -5px rgb(0 0 0 / 0.25);
+  --tw-shadow-colored: 0 35px 60px -5px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.shadow-boxy2 {
+  --tw-shadow: 0 25px 60px -5px rgb(0 0 0 / 0.25);
+  --tw-shadow-colored: 0 35px 60px -5px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.shadow-boxy3 {
+  --tw-shadow: 0 25px 20px -17px rgba(187, 187, 187, 0.25);
+  --tw-shadow-colored: 0 35px 60px -5px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.custom-rounded{
+  border-radius: 11px 69px 10px 71px;
+  -webkit-border-radius: 11px 69px 10px 71px;
+  -moz-border-radius: 11px 69px 10px 71px;
+}
+.forms-box{
+  border-radius: 131px 0px 0px 144px;
+-webkit-border-radius: 131px 0px 0px 144px;
+-moz-border-radius: 131px 0px 0px 144px;
+background: #3b0790;
+}
+
+.button-submit {
+  margin: 20px 0 10px 0;
+  background-color: #151717;
+  border: none;
+  color: white;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 10px;
+  height: 50px;
+  width: 100%;
+  cursor: pointer;
+}
+.btn {
+  margin-top: 10px;
+  width: 100%;
+  height: 50px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 500;
+  gap: 10px;
+  border: 1px solid #ededef;
+  background-color: white;
+  cursor: pointer;
+  transition: 0.2s ease-in-out;
+}
+
+.btn:hover {
+  border: 1px solid #2d79f3;
+  ;
+}
+
+
+}
