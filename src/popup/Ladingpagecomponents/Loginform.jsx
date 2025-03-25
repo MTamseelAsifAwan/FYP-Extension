@@ -1,22 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import formside from './../../popup/assets/formside.png';
 import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css'; // Import the CSS for Toastify
-import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import GoogleIcon from './../../popup/assets/google.svg'; // Example path
+import 'react-toastify/dist/ReactToastify.css';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  GoogleAuthProvider, 
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  browserPopupRedirectResolver,
+  setPersistence,
+  browserSessionPersistence,
+  signInWithCredential
+} from 'firebase/auth';
+import GoogleIcon from './../../popup/assets/google.svg';
 import { motion } from 'framer-motion';
 import heroimage from './assets/hero/hero-background.jpg';
 import { IoArrowBack } from 'react-icons/io5';
+import { authenticateWithChrome } from './../Auth/ChromeExtAuth';
 
 const Loginform = () => {
-  const [loading, setLoading] = useState(false); // Loading state
+  const [loading, setLoading] = useState(false);
+  const [isExtensionContext, setIsExtensionContext] = useState(false);
+  const [showGoogleError, setShowGoogleError] = useState(false);
   const navigate = useNavigate();
   const auth = getAuth();
   const floatInFromLeft = {
     hidden: { opacity: 0, x: -10 },
     visible: { opacity: 1, x: 0 },
   };
+
+  // Check if we're in an extension context
+  useEffect(() => {
+    const checkContext = () => {
+      return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+    };
+    setIsExtensionContext(checkContext());
+    
+    // Log extension ID for verification
+    if (checkContext()) {
+      console.log("Running in extension with ID:", chrome.runtime.id);
+    }
+    
+    // Define an async function inside useEffect
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log('Redirect result:', result.user);
+          toast.success('Logged in with Google successfully!');
+          navigate('/dashboard');
+        }
+      } catch (error) {
+        console.error('Redirect result error:', error);
+        toast.error(`Redirect error: ${error.message}`);
+      }
+    };
+    
+    // Call the async function
+    handleRedirectResult();
+  }, [auth, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -45,22 +90,42 @@ const Loginform = () => {
   };
 
   const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    setLoading(true); // Set loading to true when login starts
-
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      console.log('Google user:', user);
-
-      toast.success('Logged in with Google successfully!');
-      navigate('/dashboard');
-    } catch (error) {
-      toast.error(`Error: ${error.message}`);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-    } finally {
-      setLoading(false); // Set loading to false after login completes
+    setLoading(true);
+    setShowGoogleError(false);
+    
+    // Check if we're in a Chrome extension context
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+      try {
+        // Log details for debugging
+        console.log("Extension ID:", chrome.runtime.id);
+        
+        // Use our extension-specific authentication helper
+        const userCredential = await authenticateWithChrome();
+        console.log('Google login success:', userCredential.user);
+        toast.success('Logged in with Google successfully!');
+        navigate('/dashboard');
+      } catch (error) {
+        console.error('Chrome authentication error:', error);
+        toast.error('Authentication failed: ' + (error.message || 'Unknown error'));
+        setShowGoogleError(true);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Non-extension environment logic
+      try {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        console.log('Google login success:', result.user);
+        toast.success('Logged in with Google successfully!');
+        navigate('/dashboard');
+      } catch (error) {
+        console.error('Google login error:', error);
+        toast.error('Google login failed');
+        setShowGoogleError(true);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -141,6 +206,17 @@ const Loginform = () => {
                   )}
                 </button>
               </div>
+              {showGoogleError && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <h3 className="text-red-700 font-semibold">Google Login Not Working?</h3>
+                  <p className="text-sm text-red-600 mt-1">Chrome extensions have limitations with Google authentication:</p>
+                  <ul className="list-disc pl-5 mt-2 text-sm text-red-600">
+                    <li>Please use email/password login instead</li>
+                    <li>If you don't have an account, please create one</li>
+                    <li>Google login may work in the web version of this app</li>
+                  </ul>
+                </div>
+              )}
             </form>
           </div>
         </div>

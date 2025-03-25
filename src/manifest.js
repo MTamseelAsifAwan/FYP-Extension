@@ -3,6 +3,9 @@ import packageData from '../package.json' assert { type: 'json' }
 
 const isDev = process.env.NODE_ENV == 'development'
 
+// Define your extension ID explicitly
+const extensionId = 'IDmnhfoohciklpclngkhefijohdffidlif';
+
 export default defineManifest({
   name: `${packageData.displayName || packageData.name}${isDev ? ` ➡️ Dev` : ''}`,
   description: packageData.description,
@@ -15,7 +18,7 @@ export default defineManifest({
     128: 'img/logo-128.png',
   },
   action: {
-    default_popup: 'popup.html', // Ensure this points to your popup HTML file
+    default_popup: 'popup.html',
     default_icon: 'img/logo-48.png',
   },
   options_page: 'options.html',
@@ -36,8 +39,26 @@ export default defineManifest({
   web_accessible_resources: [
     {
       resources: ['img/logo-16.png', 'img/logo-34.png', 'img/logo-48.png', 'img/logo-128.png'],
-      matches: [],
+      matches: ['<all_urls>'],
     },
   ],
-  permissions: ['sidePanel', 'storage'],
+  key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...", // Add your extension's public key here if you have one
+  permissions: [
+    'sidePanel', 
+    'storage', 
+    'identity'  // For Google auth
+  ],
+  // Add OAuth2 configuration for Google Sign-In
+  oauth2: {
+    // The client ID is now correctly set:
+    client_id: '1058551987296-8c69uue3t4uti9kiaqf637hq4cdp39ui.apps.googleusercontent.com',
+    scopes: [
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile'
+    ]
+  },
+  // Add content security policy to allow Firebase connections
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://accounts.google.com https://*.firebaseauth.com wss://*.firebaseio.com https://sprinty-fyp-default-rtdb.firebaseio.com https://sprinty-fyp.firebasestorage.app"
+  }
 })

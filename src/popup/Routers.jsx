@@ -30,7 +30,8 @@ const Routers = () => {
         <Route path="/signup" element={<SignupForm />} />
         <Route path="/login" element={<LoginForm />} />
         <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
-        <Route path="/" element={<App />} />
+        <Route path="/home" element={<App />} /> {/* Moved App to /home route */}
+        <Route path="/" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} /> {/* Default route goes to Dashboard if authenticated */}
         <Route path="*" element={<Navigate to="/" />} /> {/* Catch-all route */}
       </Routes>
     </Suspense>

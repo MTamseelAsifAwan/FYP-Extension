@@ -63,19 +63,67 @@ function Dashboard() {
     return processedData;
   }, []);
 
+  // Add these helper functions for consistent token handling
+  const getAuthToken = () => {
+    // Try multiple token storage locations
+    const token = localStorage.getItem('userToken') || 
+                  localStorage.getItem('authToken') || 
+                  localStorage.getItem('token') ||
+                  sessionStorage.getItem('userToken');
+    
+    if (!token) {
+      console.error('⚠️ No auth token found in storage');
+      return null;
+    }
+    
+    console.log('✅ Auth token retrieved:', token.substring(0, 10) + '...');
+    return token;
+  };
+  
+  const createAuthHeaders = () => {
+    const token = getAuthToken();
+    if (!token) return {};
+    
+    // Return with correct capitalization and format
+    return { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    };
+  };
+
   const fetchTasks = useCallback(async (projectId) => {
     try {
       setLoading(true);
-      const response = await axios.get(`http://localhost:4000/api/tasks?projectId=${projectId}`);
+      console.log(`/api/tasks API hit with projectId: ${projectId}`);
+      
+      // Get headers with authentication token
+      const headers = createAuthHeaders();
+      console.log('Request headers:', JSON.stringify(headers));
+      
+      if (!headers.Authorization) {
+        console.error('No authorization token available');
+        setError('Authentication required');
+        setLoading(false);
+        return;
+      }
+      
+      const response = await axios.get(`http://localhost:4000/api/tasks?projectId=${projectId}`, {
+        headers
+      });
+      
+      console.log('Tasks API response status:', response.status);
       const issues = response.data.issues;
       const processedData = processIssuesData(issues);
       setProjectTasks(processedData);
       setTotalTasks(response.data.total);
-      setLoading(false);
-      setGraphLoading(false);
     } catch (err) {
+      console.error('Error fetching tasks data:', err);
+      if (err.response) {
+        console.error('Server response status:', err.response.status);
+        console.error('Server response data:', err.response.data);
+      }
       setError('Error fetching data');
-      console.error('Error fetching data:', err);
+    } finally {
       setLoading(false);
       setGraphLoading(false);
     }
@@ -84,14 +132,54 @@ function Dashboard() {
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:4000/api/projects');
+      console.log('/api/projects API hit');
+      
+      // Get headers with authentication token
+      const headers = createAuthHeaders();
+      console.log('Request headers:', JSON.stringify(headers));
+      
+      if (!headers.Authorization) {
+        console.error('No authorization token available');
+        setError('Authentication required');
+        setLoading(false);
+        return;
+      }
+      
+      const response = await axios.get('http://localhost:4000/api/projects', {
+        headers
+      });
+      
+      console.log('Projects API response status:', response.status);
       setProjectData(response.data);
-      console.log(response.data);
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError(err.message);
+      console.error('Error fetching projects data:', err);
+      if (err.response) {
+        console.error('Server response status:', err.response.status);
+        console.error('Server response data:', err.response.data);
+      }
+      setError(err.message || 'Failed to fetch projects');
       setLoading(false);
+    }
+  }, []);
+
+  // REMOVE the mock token useEffect and replace it with a proper token validation
+  useEffect(() => {
+    // Check if we have a token and validate it's in the right format
+    const token = getAuthToken();
+    if (token) {
+      // Verify token format (Firebase tokens are JWTs that should have 3 parts separated by dots)
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        console.error('Invalid token format - not a valid JWT');
+        localStorage.removeItem('userToken');
+        setError('Invalid authentication token. Please log in again.');
+      } else {
+        console.log('Token format appears valid (has three parts)');
+      }
+    } else {
+      console.warn('No authentication token found');
+      setError('Please log in to access your projects');
     }
   }, []);
 
@@ -151,34 +239,18 @@ function Dashboard() {
 
   return (
     <>
-      <div className="flex min-h-screen h-screen bg-cover bg-center lg:bg-cover md:bg-cover sm:bg-cover"
-          style={{ backgroundImage: `url(${heroimage})`, width: '100%', maxWidth: '100%' }}
+      <div 
+        className="relative bg-cover bg-center overflow-hidden"
+        style={{ 
+          backgroundImage: `url(${heroimage})`, 
+          width: '700px', 
+          height: '562px',
+          maxWidth: '700px',
+          maxHeight: '562px'
+        }}
       >
-        <Sidebar className="w-1/4" onSelect={handleSelectSection} activeSection={activeSection} />
-
-        <div className="w-9/12 flex-grow pl-3 pr-3 shadow-2xl rounded-3xl h-screen mr-2 ml-1">
-          {activeSection === 'dashboard' && projectHomeComponent}
-          
-          {activeSection === 'reports' && (
-            <div>
-              <h1 className="text-3xl font-bold text-purple-900">Reports</h1>
-            </div>
-          )}
-          {activeSection === 'taks-report' && (
-            <div>
-              <h1 className="text-3xl font-bold text-white">Tasks</h1>
-              <UserProvider>
-                <Tasks />
-              </UserProvider>
-            </div>
-          )}
-          {activeSection === 'setting' && (
-            <div className="overflow-auto h-3/4">
-              <Suspense fallback={<p>Loading setting...</p>}>
-                <Chatroom />
-              </Suspense>
-            </div>
-          )}
+        <div className="w-full h-full">
+          {projectHomeComponent}
         </div>
       </div>      
     </>
