@@ -13,7 +13,9 @@ import {
   browserPopupRedirectResolver,
   setPersistence,
   browserSessionPersistence,
-  signInWithCredential
+  signInWithCredential,
+  fetchSignInMethodsForEmail,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import GoogleIcon from './../../popup/assets/google.svg';
 import { motion } from 'framer-motion';
@@ -25,6 +27,15 @@ const Loginform = () => {
   const [loading, setLoading] = useState(false);
   const [isExtensionContext, setIsExtensionContext] = useState(false);
   const [showGoogleError, setShowGoogleError] = useState(false);
+  const [isGoogleOnlyAccount, setIsGoogleOnlyAccount] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [passwordResetSent, setPasswordResetSent] = useState(false);
+  const [manualResetEmail, setManualResetEmail] = useState('');
+  const [showManualReset, setShowManualReset] = useState(false);
+  const [hasResetPassword, setHasResetPassword] = useState(false);
+  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
+  const [enteredEmail, setEnteredEmail] = useState('');
+  const [webAppUrl, setWebAppUrl] = useState('https://sprinty-app.web.app'); // Update this URL to your actual webapp URL
   const navigate = useNavigate();
   const auth = getAuth();
   const floatInFromLeft = {
@@ -63,30 +74,135 @@ const Loginform = () => {
     handleRedirectResult();
   }, [auth, navigate]);
 
+  // Add this function to log Firebase project info
+  useEffect(() => {
+    // Log Firebase config details for troubleshooting
+    try {
+      const app = auth.app;
+      console.log("Firebase App name:", app.name);
+      console.log("Firebase options:", app.options);
+      // This will help verify we're connecting to the correct Firebase project
+    } catch (error) {
+      console.error("Error logging Firebase config:", error);
+    }
+  }, [auth]);
+
+  // Add this useEffect to check if user has previously reset password
+  useEffect(() => {
+    const resetEmails = JSON.parse(localStorage.getItem('passwordResetEmails') || '[]');
+    if (resetEmails.length > 0) {
+      console.log("Previously reset emails:", resetEmails);
+    }
+  }, []);
+
+  const handleEmailChange = (e) => {
+    setEnteredEmail(e.target.value);
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true); // Set loading to true when login starts
-
+    setIsGoogleOnlyAccount(false);
+    setShowManualReset(false);
+    
     try {
-      const email = e.target.elements.email.value;
+      const email = e.target.elements.email.value.toLowerCase();
+      setEnteredEmail(email); // Store the email for potential manual reset
       const password = e.target.elements.password.value;
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      toast.success('Login successful!');
-      navigate('/dashboard');
-      console.log(userCredential);
-
-    } catch (error) {
-      if (error.code === 'auth/network-request-failed') {
-        toast.error('Network request failed. Please check your internet connection.');
-      } else {
-        toast.error(`Error: ${error.message}`);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
+      // Check if this email has previously reset password
+      const resetEmails = JSON.parse(localStorage.getItem('passwordResetEmails') || '[]');
+      const hasReset = resetEmails.includes(email);
+      
+      // Try login first regardless of previous reset status
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        toast.success('Login successful!');
+        navigate('/dashboard');
+        console.log(userCredential);
+        return; // Exit early on successful login
+      } catch (loginError) {
+        console.error('Login error:', loginError);
+        console.error('Login error code:', loginError.code);
+        
+        // Show additional options after a failed login attempt
+        setShowAdditionalOptions(true);
+        
+        // If this is a previously reset email and we get invalid-credential,
+        // it might be a wrong password rather than Google-only account
+        if (hasReset && (loginError.code === 'auth/wrong-password' || 
+                         loginError.code === 'auth/invalid-credential')) {
+          toast.error('Invalid password. Please try again or reset your password.');
+          setManualResetEmail(email);
+          setShowManualReset(true);
+          setLoading(false);
+          return;
+        }
+        
+        // Continue with auth method checking if not a simple wrong password
+        try {
+          console.log("Checking sign-in methods for:", email);
+          // Check if this email exists with other sign-in methods
+          const methods = await fetchSignInMethodsForEmail(auth, email);
+          console.log('Sign-in methods for email:', methods);
+          
+          if (methods && methods.length > 0) {
+            if (methods.includes('google.com') && !methods.includes('password')) {
+              // This is a Google-only account
+              setIsGoogleOnlyAccount(true);
+              setGoogleEmail(email);
+              toast.info('This account was created with Google. Please use the reset password option below.');
+            } else if (methods.includes('password')) {
+              // Password auth is available but login failed - likely wrong password
+              toast.error('Invalid password. Please try again.');
+            } else {
+              toast.error(`Login failed: ${loginError.message}`);
+              setShowManualReset(true);
+            }
+          } else {
+            // No methods found for this email
+            toast.error('No account found with this email address.');
+            setShowManualReset(true);
+          }
+        } catch (methodError) {
+          console.error('Method check error:', methodError);
+          console.error('Method check error code:', methodError.code);
+          toast.error(`Error checking account: ${methodError.message}`);
+          setShowManualReset(true);
+        }
       }
+    } catch (error) {
+      console.error('Outer error:', error);
+      toast.error(`Error: ${error.message}`);
     } finally {
       setLoading(false); // Set loading to false after login completes
     }
+  };
+
+  const sendPasswordReset = async (email = googleEmail) => {
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setPasswordResetSent(true);
+      
+      // Store email in localStorage to remember it's been reset
+      const resetEmails = JSON.parse(localStorage.getItem('passwordResetEmails') || '[]');
+      if (!resetEmails.includes(email.toLowerCase())) {
+        resetEmails.push(email.toLowerCase());
+        localStorage.setItem('passwordResetEmails', JSON.stringify(resetEmails));
+      }
+      
+      toast.success('Password reset email sent! Please check your inbox.');
+    } catch (error) {
+      console.error('Error sending password reset:', error);
+      toast.error(`Failed to send password reset: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendManualPasswordReset = () => {
+    sendPasswordReset(manualResetEmail);
   };
 
   const handleGoogleLogin = async () => {
@@ -129,6 +245,16 @@ const Loginform = () => {
     }
   };
 
+  const handleGoogleAccountDeclaration = () => {
+    if (enteredEmail) {
+      setIsGoogleOnlyAccount(true);
+      setGoogleEmail(enteredEmail);
+      toast.info('Please use the password reset option to set up password login.');
+    } else {
+      toast.error('Please enter your email address first.');
+    }
+  };
+
   return (
     <>
       <div className="fixed top-4 left-4 z-50">
@@ -136,7 +262,7 @@ const Loginform = () => {
           <IoArrowBack />
         </button>
       </div>
-      <div className="relative w-full h-full" style={{ backgroundImage: `url(${heroimage})`, backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh' }}>
+      <div className="relative w-full h-full" style={{ backgroundImage: `url(${heroimage})`, backgroundSize: 'cover', backgroundPosition: 'center', height: '756px' }}>
         <div className="absolute inset-0 bg-cover bg-center opacity-70" />
         <div className="grid grid-cols-1 sm:grid-cols-2 w-screen h-full">
           <div className="hidden sm:block">
@@ -156,9 +282,18 @@ const Loginform = () => {
                   Welcome to Sprinty
                 </h2>
               </motion.div>
-              <div className="space-y-4">
+              
+              {/* New Google Account Information Message */}
+              <div className="p-1 bg-indigo-50 border border-indigo-200 rounded-lg ">
+                <h3 className="text-indigo-700 font-semibold">Google Account Users</h3>
+                <ul className="list-disc  text-xs text-indigo-600">
+                  Enter the same email address you used for Google login on webapp,Click "Log in" to get password reset options
+                </ul>
+              </div>
+              
+              <div className="space-y-3">
                 <div>
-                  <label className="font-bold text-base block mb-1 bg-gradient-to-r from-white to-purple-600 text-transparent bg-clip-text">
+                  <label className="font-bold text-base block  bg-gradient-to-r from-white to-purple-600 text-transparent bg-clip-text">
                     Email address
                   </label>
                   <input
@@ -168,10 +303,11 @@ const Loginform = () => {
                     placeholder="Enter email"
                     required
                     disabled={loading} // Disable input during loading
+                    onChange={handleEmailChange}
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-base block mb-1 bg-gradient-to-r from-white to-purple-600 text-transparent bg-clip-text">Password</label>
+                  <label className="font-bold text-base block  bg-gradient-to-r from-white to-purple-600 text-transparent bg-clip-text">Password</label>
                   <input
                     type="password"
                     className="border rounded-lg px-3 py-2 text-sm w-full"
@@ -191,32 +327,84 @@ const Loginform = () => {
                   {loading ? 'Logging in...' : 'Log in'} {/* Show loading text */}
                 </button>
               </div>
-              <div className="mt-4">
-                <button
-                  className="flex items-center justify-center py-2 px-4 bg-gray-200 hover:bg-gray-300 text-black w-full transition ease-in duration-200 text-base font-semibold shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg"
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={loading} // Disable button during loading
-                >
-                  {loading ? 'Please wait...' : (
-                    <>
-                      <img src={GoogleIcon} alt="Google icon" className="w-5 h-5" />
-                      <span className="ml-2">Log in with Google</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              
+            
+              
+              {isGoogleOnlyAccount && !passwordResetSent && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h3 className="text-blue-700 font-semibold">Google Account Detected</h3>
+                  <p className="text-sm text-blue-600 mt-1">
+                    This email ({googleEmail}) was previously used with Google Sign-In. 
+                    To use email/password login in this extension:
+                  </p>
+                  <ul className="list-disc pl-5 mt-2 text-sm text-blue-600">
+                    <li>Click the button below to request a password reset</li>
+                    <li>Once you've set a password, you can log in with email/password</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => sendPasswordReset()}
+                    disabled={loading}
+                    className="mt-3 w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition ease-in duration-200 text-sm font-semibold"
+                  >
+                    {loading ? "Processing..." : "Send Password Reset Email"}
+                  </button>
+                </div>
+              )}
+              
+              {showManualReset && !passwordResetSent && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <h3 className="text-yellow-700 font-semibold">Account Detection Issue</h3>
+                  <p className="text-sm text-yellow-600 mt-1">
+                    We're having trouble detecting your account properly 
+                    you can manually request a password reset email:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={sendManualPasswordReset}
+                    disabled={loading}
+                    className="mt-3 w-full py-2 px-4 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition ease-in duration-200 text-sm font-semibold"
+                  >
+                    {loading ? "Processing..." : `Reset Password for ${manualResetEmail}`}
+                  </button>
+                </div>
+              )}
+              
+              {passwordResetSent && (
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <h3 className="text-green-700 font-semibold">Password Reset Email Sent</h3>
+                  <p className="text-sm text-green-600 mt-1">
+                    We've sent a password reset link to {googleEmail}. Please check your inbox and spam folder.
+                  </p>
+                  <p className="text-sm text-green-600 mt-2">
+                    After setting your password, you can return to log in with your email and new password.
+                  </p>
+                </div>
+              )}
+              
+             
+              
               {showGoogleError && (
                 <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <h3 className="text-red-700 font-semibold">Google Login Not Working?</h3>
                   <p className="text-sm text-red-600 mt-1">Chrome extensions have limitations with Google authentication:</p>
                   <ul className="list-disc pl-5 mt-2 text-sm text-red-600">
-                    <li>Please use email/password login instead</li>
-                    <li>If you don't have an account, please create one</li>
-                    <li>Google login may work in the web version of this app</li>
+                    <li>Please use email/password login instead/Reset it</li>
+             
                   </ul>
                 </div>
               )}
+              
+              {/* New Sign Up Button */}
+              <div className="mt-1 text-center">
+                <a 
+                  href={webAppUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block py-2 px-6 bg-green-600 hover:bg-green-700 text-white rounded-lg transition ease-in duration-200 text-base font-semibold shadow-md"
+                >
+                  Sign Up on Web App
+                </a>
+              </div>
             </form>
           </div>
         </div>
